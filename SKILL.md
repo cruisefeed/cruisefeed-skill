@@ -73,11 +73,28 @@ Check liveness (no key needed): `GET https://api.cruisefeed.io/healthz` → `{"s
 `cruise_line` · `ship_name` · `embark_port` · `region` (partial match) ·
 `departure_from` · `departure_to` (dates, `YYYY-MM-DD`) · `min_price` ·
 `max_price` · `min_nights` · `max_nights` · `round_trip` (bool) · `dedupe`
-(default `true`) · `sort` (default `departure_date`) · `limit` (1–500, default
-50) · `offset`.
+(default `true`) · `include_past` (bool, default `false`) · `sort` · `limit`
+(1–500, default 50) · `offset`.
+
+**`sort` accepts exactly four values** — `departure_date` (default),
+`-departure_date`, `price`, `-price`. A `-` prefix means descending. Anything
+else is a `400`; in particular there is no `price_amount` sort, even though the
+field is called `price_amount` in responses.
+
+**The listing returns upcoming sailings only** unless you say otherwise. The
+catalogue holds historical sailings back to 2015, and ~98% of those carry no
+price, so they are excluded by default. Pass `include_past=true` to include
+them; setting `departure_from` or `departure_to` takes control of the date
+window and overrides the default on its own.
 
 `/v1/changes` takes `since` (date), `cruise_line`, `limit`, `offset`.
 `/v1/ships` takes `q`, `operator`, `flag_state`, `limit`, `offset`.
+
+A `/v1/changes` item is **not** a cruise. It is a before/after record —
+`id`, `cruise_line`, `ship_name`, `departure_date`, `old_price`, `new_price`,
+`price_currency`, `old_date`, `new_date` — with no `title` and no
+`price_amount`. Compute the drop as `old_price - new_price`, and fetch
+`/v1/cruises/{id}` if you need the full sailing.
 
 Full field lists, the response envelope, and the ship schema are in
 [`references/api.md`](references/api.md). Runnable examples are in
@@ -87,24 +104,30 @@ Full field lists, the response envelope, and the ship schema are in
 
 ```bash
 # Cheapest Alaska sailings, 7+ nights
-curl "https://api.cruisefeed.io/v1/cruises?region=Alaska&min_nights=7&sort=price_amount&limit=10" \
+curl "https://api.cruisefeed.io/v1/cruises?region=Alaska&min_nights=7&sort=price&limit=10" \
   -H "Authorization: Bearer $CRUISEFEED_API_KEY"
 
-# One sailing with full itinerary + ship specs inline
-curl "https://api.cruisefeed.io/v1/cruises/cru_4f2a9c1b7e3d5068" \
+# One sailing with full itinerary + ship specs inline.
+# Take the id from any /v1/cruises response — ids are opaque, not guessable.
+curl "https://api.cruisefeed.io/v1/cruises/cru_860497ad8b384e49" \
   -H "Authorization: Bearer $CRUISEFEED_API_KEY"
 
-# Fare drops on MSC since a date (deal alerts)
+# Fare drops on MSC since a date (deal alerts).
+# Note: change records carry old_price/new_price, NOT price_amount.
 curl "https://api.cruisefeed.io/v1/changes?since=2026-06-20&cruise_line=MSC%20Cruises" \
   -H "Authorization: Bearer $CRUISEFEED_API_KEY"
 
 # Ship specs by IMO (tonnage, decks, cabins, capacity, sister ships)
-curl "https://api.cruisefeed.io/v1/ships/9839419" \
+curl "https://api.cruisefeed.io/v1/ships/9837420" \
   -H "Authorization: Bearer $CRUISEFEED_API_KEY"
 
 # Bulk export as CSV
 curl "https://api.cruisefeed.io/v1/cruises.csv?region=Caribbean&max_price=1200" \
   -H "Authorization: Bearer $CRUISEFEED_API_KEY" -o cruises.csv
+
+# Historical sailings (the catalogue reaches back to 2015; upcoming-only by default)
+curl "https://api.cruisefeed.io/v1/cruises?include_past=true&departure_to=2020-01-01&limit=10" \
+  -H "Authorization: Bearer $CRUISEFEED_API_KEY"
 ```
 
 ## Rules

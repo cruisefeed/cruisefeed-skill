@@ -12,7 +12,8 @@ import sys
 
 import requests
 
-BASE = "https://api.cruisefeed.io"
+# Override with CRUISEFEED_API_BASE to run against a staging host.
+BASE = os.environ.get("CRUISEFEED_API_BASE", "https://api.cruisefeed.io").rstrip("/")
 
 
 def get_cruises(**filters) -> list[dict]:
@@ -37,11 +38,15 @@ def get_cruises(**filters) -> list[dict]:
 
 
 if __name__ == "__main__":
-    cruises = get_cruises(region="Alaska", min_nights=7, max_price=2000)
-    print(f"{len(cruises)} Alaska sailings (7+ nights, <= $2000)\n")
+    # sort takes departure_date|-departure_date|price|-price (not `price_amount`).
+    # The listing returns upcoming sailings only; pass include_past="true" for history.
+    cruises = get_cruises(region="Alaska", min_nights=7, max_price=2000, sort="price")
+    print(f"{len(cruises)} Alaska sailings (7+ nights, <= $2000), cheapest first\n")
     for c in cruises[:10]:
-        ports = " > ".join(stop["port"] for stop in c.get("itinerary", []))
+        # Itinerary richness varies by source and a sea day carries no port at all,
+        # so read every stop key defensively.
+        ports = " > ".join(s["port"] for s in c.get("itinerary") or [] if s.get("port"))
         price = c.get("price_amount")
         price_s = f"${price}" if price is not None else "n/a"
-        print(f'{c.get("departure_date","?")}  {c["cruise_line"]:<18} '
-              f'{c.get("title",""):<28} {price_s:<7} {ports}')
+        print(f'{c.get("departure_date") or "?":<12} {c["cruise_line"]:<18} '
+              f'{(c.get("title") or "")[:28]:<28} {price_s:<9} {ports}')
